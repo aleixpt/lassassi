@@ -1,89 +1,61 @@
 "use client";
-
-import { useState, useEffect } from 'react'
-import { useRouter } from "next/navigation"; 
+import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import PlayerCard from '../../components/PlayCard'
+import PlayerCard from "../../components/PlayerCard";
+import { useRouter } from "next/navigation";
 
 export default function Waiting() {
-  const router = useRouter()
-  const [session, setSession] = useState(null)
-  const [players, setPlayers] = useState([])
-  const roomId = 'main'
-  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'aleixpt@gmail.com'
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [players, setPlayers] = useState([]);
+  const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data?.session) router.push('/')
-      else {
-        setSession(data.session)
-        setIsAdmin(data.session.user.email === adminEmail)
-        joinRoom(data.session.user)
-      }
-    })
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) { router.push("/auth"); return; }
+      setUser(data.user);
+      setIsAdmin(data.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
+    });
+    fetchPlayers();
 
-    const channel = supabase.channel('players-room-main')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => fetchPlayers())
-      .subscribe()
+    const channel = supabase.channel('waiting-room')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, fetchPlayers)
+      .subscribe();
 
-    fetchPlayers()
-    return () => { supabase.removeChannel(channel) }
-  }, [])
-
-  async function joinRoom(user) {
-    await supabase.from('players').upsert({
-      room_id: roomId,
-      user_id: user.id
-    }, { onConflict: 'user_id' })
-    fetchPlayers()
-  }
+    return () => supabase.removeChannel(channel);
+  }, []);
 
   async function fetchPlayers() {
-    const { data } = await supabase.from('players').select('*, profiles(display_name, avatar_url)').eq('room_id', roomId)
-    setPlayers(data || [])
-  }
-
-  async function assignRoles() {
-    if (!isAdmin) return alert('Solo admin')
-    const n = Math.max(2, Math.round(players.length * 0.2))
-    const r = await fetch('/api/assign_roles', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId, numAssassins: n })
-    })
-    const j = await r.json()
-    if (j.ok) alert('Roles asignados')
+    const { data } = await supabase.from('profiles').select('id, display_name, avatar_url, created_at');
+    setPlayers(data || []);
   }
 
   async function startGame() {
-    if (!isAdmin) return alert('Solo admin')
-    const r = await fetch('/api/start_game', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId })
-    })
-    const j = await r.json()
-    if (j.ok) router.push('/game')
-    else alert('Error iniciando partida')
+    if (!isAdmin) return alert('Només admin');
+    // simple: set a room.status to running via API or update game_state
+    const res = await fetch('/api/start_game', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ roomId: 'main'})});
+    const j = await res.json();
+    if (j.ok) router.push('/game');
+    else alert('Error iniciant partida');
   }
 
   return (
-    <div className="min-h-screen p-4">
-      <div className="max-w-xl mx-auto card">
-        <h1 className="text-2xl font-bold text-blood-red mb-3">Sala d'espera</h1>
-        <p className="text-sm text-muted-gray">Comparte el enlace con tus amigos para que se unan.</p>
+    <div className="min-h-screen p-4 bg-gradient-mystery">
+      <div className="max-w-4xl mx-auto space-y-6">
+        <h1 className="text-3xl font-bold text-foreground text-center">Sala d'espera</h1>
 
-        <div className="mt-4 space-y-2">
-          {players.map(p => (
-            <PlayerCard key={p.user_id} player={p} />
-          ))}
+        <div className="grid gap-3">
+          {players.map(p => <PlayerCard key={p.id} avatar={p.avatar_url} name={p.display_name || 'Jugador'} status={new Date(p.created_at).toLocaleTimeString()} />)}
         </div>
 
-        {isAdmin && (
-          <div className="mt-4 flex gap-2">
-            <button onClick={assignRoles} className="button-primary">Asignar roles</button>
-            <button onClick={startGame} className="py-2 px-4 rounded-2xl border border-gray-700">Iniciar partida</button>
+        {isAdmin ? (
+          <div className="mt-4">
+            <button className="btn btn-primary w-full" onClick={startGame}>Iniciar Partida</button>
           </div>
+        ) : (
+          <p className="text-center small-muted">Esperant que l'administrador iniciï la partida...</p>
         )}
       </div>
     </div>
-  )
+  );
 }

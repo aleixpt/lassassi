@@ -1,71 +1,71 @@
 "use client";
-
 import { useEffect, useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabaseClient";
-import PlayerCard from '../../components/PlayCard'
 
-export default function Game() {
-  const router = useRouter()
-  const [player, setPlayer] = useState(null)
-  const [players, setPlayers] = useState([])
-  const [clues, setClues] = useState([])
+export default function VotePage(){
+  const [players, setPlayers] = useState([]);
+  const [most, setMost] = useState('');
+  const [least, setLeast] = useState('');
+  const [timer, setTimer] = useState(60);
+  const [running, setRunning] = useState(false);
+  const [playerId, setPlayerId] = useState(null);
+  const router = useRouter();
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data?.session) router.push('/')
-      else loadPlayer(data.session.user.id)
-    })
-  }, [])
+  useEffect(()=> {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) router.push('/auth');
+      else supabase.from('players').select('id').eq('user_id', data.user.id).maybeSingle().then(r=> setPlayerId(r.data?.id));
+    });
+    loadPlayers();
+  }, []);
 
-  async function loadPlayer(userId) {
-    const { data } = await supabase.from('players').select('*, profiles(display_name,avatar_url)').eq('user_id', userId).single()
-    setPlayer(data)
-    fetchPlayers()
-    fetchPlayerClues(data?.id)
+  function loadPlayers(){
+    supabase.from('players').select('id, profiles(display_name)').eq('room_id','main').then(r=> setPlayers(r.data || []));
   }
 
-  async function fetchPlayers() {
-    const { data } = await supabase.from('players').select('*, profiles(display_name,avatar_url)').eq('room_id', 'main')
-    setPlayers(data || [])
+  useEffect(()=>{
+    let it;
+    if (running && timer>0) it = setInterval(()=> setTimer(t=>t-1), 1000);
+    else if (timer===0 && running) submitVote();
+    return ()=> clearInterval(it);
+  }, [running,timer]);
+
+  function start(){
+    setTimer(60); setRunning(true);
   }
 
-  async function fetchPlayerClues(pid) {
-    if (!pid) return
-    const { data } = await supabase.from('player_clues').select('clue_id, clues(*)').eq('player_id', pid)
-    setClues(data || [])
+  async function submitVote(){
+    setRunning(false);
+    try{
+      await fetch('/api/submit_vote', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ roundId: null, voterPlayerId: playerId, trustMostId: most, trustLeastId: least })});
+      alert('Vot registrat');
+      router.push('/game');
+    }catch(e){ alert(e.message || e) }
   }
 
   return (
-    <div className="min-h-screen p-4">
+    <div className="min-h-screen p-4 bg-gradient-mystery">
       <div className="max-w-xl mx-auto card">
-        <h1 className="text-2xl font-bold text-blood-red mb-3">Menú de la partida</h1>
-
-        <div className="mb-4">
-          <div className="font-semibold">Tu rol</div>
-          <div className="p-3 rounded bg-black/20 mt-2">{player?.role ?? 'Desconocido'}</div>
-          <div className="text-xs text-muted-gray mt-1">Secreto — no lo enseñes a nadie</div>
-        </div>
-
-        <div className="mb-4">
-          <h2 className="font-semibold mb-2">Pistas desbloqueadas</h2>
-          {clues.length === 0 ? <p className="text-sm text-muted-gray">Aún no tienes pistas.</p> : clues.map(c => (
-            <div key={c.clue_id} className="p-2 bg-black/30 rounded mb-2">{c.clues.title}</div>
-          ))}
-        </div>
-
-        <div className="flex gap-2 mb-4">
-          <button onClick={() => router.push('/game/scan')} className="py-2 px-4 rounded-2xl border border-gray-700">Leer QR</button>
-          <button onClick={() => router.push('/game/vote')} className="button-primary">Votación</button>
-        </div>
-
-        <div>
-          <h3 className="font-semibold mb-2">Jugadores</h3>
-          <div className="space-y-2">
-            {players.map(p => <PlayerCard key={p.user_id} player={p} />)}
+        <h2 className="text-xl font-semibold mb-3">Votació</h2>
+        {!running ? <button className="btn btn-primary w-full" onClick={start}>Iniciar votació</button> : (
+          <div>
+            <div className="text-2xl font-bold">{timer}s</div>
+            <div className="mt-3">
+              <label className="text-sm">Confiat</label>
+              <select className="w-full p-2 mt-1 bg-black/20 rounded" value={most} onChange={e=>setMost(e.target.value)}>
+                <option value="">—</option>
+                {players.map(p => <option key={p.id} value={p.id}>{p.profiles?.display_name || p.id}</option>)}
+              </select>
+              <label className="text-sm mt-3 block">Menys confiat</label>
+              <select className="w-full p-2 mt-1 bg-black/20 rounded" value={least} onChange={e=>setLeast(e.target.value)}>
+                <option value="">—</option>
+                {players.map(p => <option key={p.id} value={p.id}>{p.profiles?.display_name || p.id}</option>)}
+              </select>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
-  )
+  );
 }

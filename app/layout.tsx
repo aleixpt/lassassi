@@ -17,17 +17,11 @@ export const metadata: Metadata = {
   description: "Joc d'assassinats",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }) {
   return (
     <html lang="ca">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
+      <body>
+        <main className="min-h-screen">{children}</main>
       </body>
     </html>
   );

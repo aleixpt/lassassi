@@ -1,13 +1,11 @@
-// components/PlayerCard.jsx
-export default function PlayerCard({ player }) {
-  const avatar = player?.profiles?.avatar_url || '/default-avatar.png'
+export default function PlayerCard({ avatar, name, status }) {
   return (
-    <div className="flex items-center gap-3 p-2 bg-black/20 rounded">
-      <img src={avatar} alt="avatar" className={`w-12 h-12 rounded-full ${player?.is_alive ? '' : 'opacity-50 grayscale'}`} />
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-[rgba(255,255,255,0.02)]">
+      <img src={avatar || '/default-avatar.png'} className="w-12 h-12 rounded-full object-cover" alt="" />
       <div>
-        <div className="font-semibold">{player?.profiles?.display_name || 'Jugador'}</div>
-        <div className="text-xs text-muted-gray">{player?.is_alive ? 'Viu' : 'Fantasma'}</div>
+        <div className="font-semibold">{name}</div>
+        <div className="text-sm small-muted">{status}</div>
       </div>
     </div>
-  )
+  );
 }
