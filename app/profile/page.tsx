@@ -1,7 +1,8 @@
-// pages/profile.js
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { useRouter } from 'next/router'
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabaseClient";
 
 export default function Profile() {
   const router = useRouter()

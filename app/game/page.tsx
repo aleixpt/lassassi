@@ -1,8 +1,9 @@
-// pages/game.js
-import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
-import { useRouter } from 'next/router'
-import PlayerCard from '../components/PlayerCard'
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabaseClient";
+import PlayerCard from '../../components/PlayCard'
 
 export default function Game() {
   const router = useRouter()

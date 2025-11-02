@@ -1,10 +1,12 @@
-// pages/game/scan.js
-import dynamic from 'next/dynamic'
-import { useRouter } from 'next/router'
-import { useEffect } from 'react'
-import { supabase } from '../../lib/supabaseClient'
+"use client";
 
-const QRScanner = dynamic(() => import('../../components/QRScanner'), { ssr: false })
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
+import dynamic from 'next/dynamic'
+
+
+const QRScanner = dynamic(() => import('../../../components/QRScanner'), { ssr: false })
 
 export default function Scan() {
   const router = useRouter()
