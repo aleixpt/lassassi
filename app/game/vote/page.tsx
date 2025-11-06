@@ -1,86 +1,74 @@
-// pages/game/vote.js
-import { useEffect, useState } from 'react'
-import { supabase } from '../../../lib/supabaseClient'
-import { useRouter } from 'next/router'
+// app/game/vote/page.tsx
+"use client";
 
-export default function Vote() {
-  const router = useRouter()
-  const [players, setPlayers] = useState([])
-  const [most, setMost] = useState('')
-  const [least, setLeast] = useState('')
-  const [timer, setTimer] = useState(60)
-  const [running, setRunning] = useState(false)
-  const [playerId, setPlayerId] = useState(null)
+import { useEffect, useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data?.session) router.push('/')
-      else {
-        supabase.from('players').select('id').eq('user_id', data.session.user.id).single().then(res => setPlayerId(res.data?.id))
-      }
-    })
-    fetchPlayers()
-  }, [])
-
-  async function fetchPlayers() {
-    const { data } = await supabase.from('players').select('id, profiles(display_name)').eq('room_id', 'main')
-    setPlayers(data || [])
-  }
+export default function VotePage() {
+  const [players, setPlayers] = useState<any[]>([]);
+  const [most, setMost] = useState("");
+  const [least, setLeast] = useState("");
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    let it
-    if (running && timer > 0) it = setInterval(() => setTimer(t => t - 1), 1000)
-    else if (timer === 0 && running) submitVote()
-    return () => clearInterval(it)
-  }, [running, timer])
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.replace("/"); return; }
+      const { data } = await supabase.from("profiles").select("id, display_name").order("display_name");
+      setPlayers(data || []);
+      setLoading(false);
+    })();
+  }, [router]);
 
-  function startCountdown() {
-    setTimer(60)
-    setRunning(true)
-  }
-
-  async function submitVote() {
-    setRunning(false)
+  async function submitVote(e?: React.FormEvent) {
+    e?.preventDefault();
     try {
-      await fetch('/api/submit_vote', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
-          roundId: null, voterPlayerId: playerId, trustMostId: most, trustLeastId: least
-        })
-      })
-      alert('Voto registrado')
-      router.push('/game')
-    } catch (err) {
-      alert('Error enviando voto')
+      const { data: { user } } = await supabase.auth.getUser();
+      // Obtenir player id
+      const { data: playerRow } = await supabase.from("players").select("id").eq("user_id", user.id).maybeSingle();
+      const voterPlayerId = playerRow?.id;
+      const res = await fetch("/api/submit_vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voterPlayerId, trustMostId: most, trustLeastId: least }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || "Error enviant vot");
+      alert("Vot registrat!");
+      router.push("/game");
+    } catch (err: any) {
+      alert(err.message || err);
     }
   }
 
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-white">Carregant...</div>;
+
   return (
-    <div className="min-h-screen p-4">
-      <div className="max-w-xl mx-auto card">
-        <h2 className="text-lg font-semibold text-blood-red mb-3">Votación</h2>
-        {!running ? (
+    <div className="min-h-screen bg-gradient-mystery p-6 text-white">
+      <div className="max-w-xl mx-auto bg-black/50 p-6 rounded-2xl border border-white/8">
+        <h2 className="text-xl font-bold mb-4">Votació</h2>
+        <form onSubmit={submitVote} className="space-y-4">
           <div>
-            <p className="text-sm text-muted-gray mb-3">Sólo el admin inicia la votación desde la sala, pero puedes probar iniciar aquí.</p>
-            <button onClick={startCountdown} className="button-primary">Iniciar votación</button>
+            <label className="block text-sm mb-1">Jugador de confiança</label>
+            <select value={most} onChange={(e)=>setMost(e.target.value)} className="w-full p-3 rounded-md bg-[#0b0b0d]">
+              <option value="">—</option>
+              {players.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+            </select>
           </div>
-        ) : (
+
           <div>
-            <div className="text-xl font-bold">{timer}s</div>
-            <div className="mt-3">
-              <label className="text-sm">Confiado (most)</label>
-              <select onChange={e => setMost(e.target.value)} className="w-full p-2 mt-1 bg-black/20 rounded">
-                <option value="">—</option>
-                {players.map(p => <option key={p.id} value={p.id}>{p.profiles?.display_name || p.id}</option>)}
-              </select>
-              <label className="text-sm mt-3 block">Menos confiado (least)</label>
-              <select onChange={e => setLeast(e.target.value)} className="w-full p-2 mt-1 bg-black/20 rounded">
-                <option value="">—</option>
-                {players.map(p => <option key={p.id} value={p.id}>{p.profiles?.display_name || p.id}</option>)}
-              </select>
-            </div>
+            <label className="block text-sm mb-1">Jugador menys confiat</label>
+            <select value={least} onChange={(e)=>setLeast(e.target.value)} className="w-full p-3 rounded-md bg-[#0b0b0d]">
+              <option value="">—</option>
+              {players.map(p => <option key={p.id} value={p.id}>{p.display_name}</option>)}
+            </select>
           </div>
-        )}
+
+          <button className="w-full py-2 rounded-md bg-blood-red" type="submit">Enviar vot</button>
+        </form>
       </div>
     </div>
-  )
+  );
 }

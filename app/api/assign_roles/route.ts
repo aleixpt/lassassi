@@ -1,3 +1,4 @@
+// app/api/assign_roles/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -8,20 +9,22 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 export async function POST(req: Request) {
   try {
     const { assassins } = await req.json();
-
-    if (!Array.isArray(assassins) || assassins.length === 0) {
-      return NextResponse.json({ ok: false, error: "Cap assassí rebut" }, { status: 400 });
+    if (!Array.isArray(assassins)) {
+      return NextResponse.json({ ok: false, error: "Llista d'assassins invàlida" }, { status: 400 });
     }
 
-    // Reseteja tots
-    await supabaseAdmin.from("players").update({ role: "innocent" }).eq("room_id", "main");
+    // Reset roles
+    await supabaseAdmin.from("players").update({ role: "investigator" }).eq("room_id", "main");
 
-    // Marca els seleccionats com assassins
-    await supabaseAdmin.from("players").update({ role: "assassin" }).in("id", assassins);
+    // Assign assassins
+    if (assassins.length > 0) {
+      const { error } = await supabaseAdmin.from("players").update({ role: "assassin" }).in("id", assassins);
+      if (error) throw error;
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("Error assignant rols:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    console.error("assign_roles error:", err);
+    return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
   }
 }

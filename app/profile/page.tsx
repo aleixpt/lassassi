@@ -1,75 +1,59 @@
+// app/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
-export default function ProfileLanding() {
+export default function ProfilePage() {
   const router = useRouter();
-  const [status, setStatus] = useState("Comprovant sessió...");
+  const [profile, setProfile] = useState<any>(null);
+  const [showRole, setShowRole] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
-      try {
-        // 1) Intentem recuperar la sessió actual (si Supabase ja ha establert la sessió)
-        const s = await supabase.auth.getSession();
-        if (!s.data?.session) {
-          // Supabase pot utilitzar el hash o query params: intentar intercanviar codi (opcional)
-          // Si l'enllaç no ha estat processat, Supabase JS pot fer-ho automàticament en navegadors moderns.
-          setStatus("Esperant la confirmació del correu...");
-          // Deixa un curt delay per si Supabase està processant.
-          await new Promise((r) => setTimeout(r, 800));
-        }
-
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData?.session;
-        if (!session) {
-          // Si encara no hi ha sessió, redirigeix a landing
-          setStatus("No s'ha pogut establir la sessió. Torna-ho a intentar.");
-          setTimeout(() => router.replace("/"), 2000);
-          return;
-        }
-
-        const user = session.user;
-
-        // 2) Recuperem nom guardat al localStorage
-        const localName = (localStorage.getItem("lassassi_display_name") || "").trim();
-
-        // 3) Fem upsert al perfil per assegurar que el display_name queda guardat
-        if (localName) {
-          const { error: upErr } = await supabase.from("profiles").upsert({
-            id: user.id,
-            display_name: localName
-          });
-          if (upErr) {
-            console.error("Error upserting profile:", upErr);
-          }
-        } else {
-          // si no hi ha localName i no existeix perfil, el trigger ja hauria creat un perfil amb email
-          // Opcional: podríem demanar nom al primer inici de sessió
-        }
-
-        // 4) Redirigeix segons l'estat de la partida
-        const { data: gs } = await supabase.from("game_state").select("phase").maybeSingle();
-        if (gs && gs.phase === "investigation") router.replace("/game");
-        else router.replace("/waiting");
-      } catch (err: any) {
-        console.error(err);
-        setStatus("S'ha produït un error: " + (err.message || err));
-        setTimeout(() => router.replace("/"), 3000);
-      }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.replace("/"); return; }
+      const userId = session.user.id;
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+      if (error) console.error(error);
+      setProfile(data || { id: userId, display_name: session.user.email });
+      setLoading(false);
     })();
   }, [router]);
 
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-white">Carregant...</div>;
+
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="card p-6">
-        <div className="text-center">
-          <div className="text-lg font-semibold">Iniciant sessió...</div>
-          <div className="text-sm text-gray-400 mt-2">No tanquis aquesta finestra — et redirigirem en breu.</div>
+    <div className="min-h-screen bg-gradient-mystery p-6 text-white">
+      <div className="max-w-lg mx-auto bg-black/50 p-6 rounded-2xl border border-white/8">
+        <h2 className="text-2xl font-bold mb-2">Perfil</h2>
+        <div className="mb-4">
+          <div className="font-semibold text-lg">{profile.display_name}</div>
+          <div className="text-sm text-gray-400">{profile.email}</div>
+        </div>
+
+        <div className="mb-4">
+          <button
+            onClick={() => setShowRole((s) => !s)}
+            className="px-4 py-2 rounded-md bg-gray-800"
+          >
+            {showRole ? "Amagar rol" : "Veure rol secret"}
+          </button>
+          {showRole && (
+            <div className="mt-3 p-3 bg-black/40 rounded-md">
+              <div className="font-semibold">{profile.role ?? "Sense rol assignat"}</div>
+              <div className="text-sm text-gray-400">Aquest rol és privat — no el mostris als altres.</div>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <button onClick={() => router.push("/game/scan")} className="mr-2 px-4 py-2 rounded-md bg-clue">Escanejar QR</button>
+          <button onClick={() => router.push("/game/vote")} className="px-4 py-2 rounded-md bg-trust">Votació</button>
         </div>
       </div>
     </div>
   );
 }
-
