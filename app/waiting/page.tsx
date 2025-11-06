@@ -11,6 +11,7 @@ export default function Waiting() {
   const [isAdmin, setIsAdmin] = useState(false);
   const router = useRouter();
 
+  // 🔹 Comprovació d'usuari i càrrega inicial
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -27,30 +28,33 @@ export default function Waiting() {
 
       await fetchPlayers();
 
-      // 🔁 refresc automàtic cada 5s
+      // 🔁 Refresc automàtic cada 5 segons
       const interval = setInterval(fetchPlayers, 5000);
-
       return () => clearInterval(interval);
     })();
   }, []);
 
+  // 🔹 Obtenir jugadors
   async function fetchPlayers() {
     const { data, error } = await supabase
       .from("profiles")
       .select("id, display_name, avatar_url, created_at")
       .order("created_at");
 
-    if (!error) {
-      // ❌ excloure administrador del llistat
+    if (!error && data) {
+      // ❌ Excloure administrador del llistat
       const filtered = data.filter(
-        (p) => p.display_name?.toLowerCase() !== "aleixpt" &&
-               p.display_name?.toLowerCase() !== "admin" &&
-               p.display_name?.toLowerCase() !== process.env.NEXT_PUBLIC_ADMIN_EMAIL?.toLowerCase()
+        (p) =>
+          p.display_name?.toLowerCase() !== "aleixpt" &&
+          p.display_name?.toLowerCase() !== "admin" &&
+          p.display_name?.toLowerCase() !==
+            process.env.NEXT_PUBLIC_ADMIN_EMAIL?.toLowerCase()
       );
       setPlayers(filtered);
     }
   }
 
+  // 🔹 Seleccionar/desseleccionar assassins
   function toggle(id: string) {
     const s = new Set(selected);
     if (s.has(id)) s.delete(id);
@@ -58,8 +62,9 @@ export default function Waiting() {
     setSelected(s);
   }
 
+  // 🔹 Iniciar partida (només administrador)
   async function startGame() {
-    if (!isAdmin) return alert("Només l’administrador pot iniciar la partida");
+    if (!isAdmin) return;
 
     if (selected.size < 2) {
       const confirmContinue = confirm(
@@ -72,15 +77,16 @@ export default function Waiting() {
       const res = await fetch(`${window.location.origin}/api/start_game`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assassins: Array.from(selected) })
+        body: JSON.stringify({ assassins: Array.from(selected) }),
       });
 
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || "Error iniciant partida");
-      alert("🎯 Partida iniciada!");
+
+      // 🔁 Quan s’inicia la partida → redirigeix tothom a /game
       router.push("/game");
     } catch (err: any) {
-      alert("Error iniciant la partida: " + (err.message || err));
+      console.error("Error iniciant la partida:", err);
     }
   }
 
@@ -89,6 +95,7 @@ export default function Waiting() {
       <div className="max-w-4xl mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-center">Sala d'espera</h1>
 
+        {/* Llista de jugadors */}
         <div className="grid gap-4">
           {players.map((p) => (
             <div
@@ -102,7 +109,9 @@ export default function Waiting() {
                   className="w-12 h-12 rounded-full border border-white/20"
                 />
                 <div>
-                  <div className="font-semibold">{p.display_name || "Jugador"}</div>
+                  <div className="font-semibold">
+                    {p.display_name || "Jugador"}
+                  </div>
                   <div className="text-xs text-gray-400">
                     {new Date(p.created_at).toLocaleTimeString()}
                   </div>
@@ -125,6 +134,7 @@ export default function Waiting() {
           ))}
         </div>
 
+        {/* Botó per iniciar partida */}
         {isAdmin ? (
           <div className="text-center space-y-3">
             <button

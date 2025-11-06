@@ -1,68 +1,86 @@
+// app/game/page.tsx
 "use client";
+
 import { useEffect, useState } from "react";
-import { supabase } from "../../../lassassi";
 import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabaseClient";
+import { Eye, Users, QrCode, FileText, Vote } from "lucide-react";
 
-export default function VotePage(){
-  const [players, setPlayers] = useState([]);
-  const [most, setMost] = useState('');
-  const [least, setLeast] = useState('');
-  const [timer, setTimer] = useState(60);
-  const [running, setRunning] = useState(false);
-  const [playerId, setPlayerId] = useState(null);
+export default function GameMenu() {
   const router = useRouter();
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(()=> {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data?.user) router.push('/auth');
-      else supabase.from('players').select('id').eq('user_id', data.user.id).maybeSingle().then(r=> setPlayerId(r.data?.id));
-    });
-    loadPlayers();
-  }, []);
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data?.session;
+      if (!session) {
+        router.replace("/auth");
+        return;
+      }
+      setUser(session.user);
+      setIsAdmin(session.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
+      setLoading(false);
+    })();
+  }, [router]);
 
-  function loadPlayers(){
-    supabase.from('players').select('id, profiles(display_name)').eq('room_id','main').then(r=> setPlayers(r.data || []));
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-mystery flex items-center justify-center text-white">
+        Carregant...
+      </div>
+    );
   }
 
-  useEffect(()=>{
-    let it;
-    if (running && timer>0) it = setInterval(()=> setTimer(t=>t-1), 1000);
-    else if (timer===0 && running) submitVote();
-    return ()=> clearInterval(it);
-  }, [running,timer]);
-
-  function start(){
-    setTimer(60); setRunning(true);
-  }
-
-  async function submitVote(){
-    setRunning(false);
-    try{
-      await fetch('/api/submit_vote', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ roundId: null, voterPlayerId: playerId, trustMostId: most, trustLeastId: least })});
-      alert('Vot registrat');
-      router.push('/game');
-    }catch(e){ alert(e.message || e) }
-  }
+  const cards = [
+    { title: "El meu perfil", desc: "Veure el teu rol i estat", icon: <Eye className="h-6 w-6" />, path: "/profile" },
+    { title: "Jugadors", desc: "Qui està viu/fantasma", icon: <Users className="h-6 w-6" />, path: "/players" },
+    { title: "Escanejar QR", desc: "Llegir pistes amb la càmera", icon: <QrCode className="h-6 w-6" />, path: "/game/scan" },
+    { title: "Les meves pistes", desc: "Pistes que has desbloquejat", icon: <FileText className="h-6 w-6" />, path: "/clues" },
+    { title: "Votació", desc: "Vota el més/menys de confiança", icon: <Vote className="h-6 w-6" />, path: "/game/vote" },
+  ];
 
   return (
-    <div className="min-h-screen p-4 bg-gradient-mystery">
-      <div className="max-w-xl mx-auto card">
-        <h2 className="text-xl font-semibold mb-3">Votació</h2>
-        {!running ? <button className="btn btn-primary w-full" onClick={start}>Iniciar votació</button> : (
+    <div className="min-h-screen bg-gradient-mystery text-white p-6">
+      <div className="max-w-3xl mx-auto">
+        <header className="flex items-center gap-4 mb-6">
+          <div className="h-14 w-14 rounded-full bg-black/30 flex items-center justify-center text-2xl font-bold">
+            {user?.email?.charAt(0)?.toUpperCase() || "U"}
+          </div>
           <div>
-            <div className="text-2xl font-bold">{timer}s</div>
-            <div className="mt-3">
-              <label className="text-sm">Confiat</label>
-              <select className="w-full p-2 mt-1 bg-black/20 rounded" value={most} onChange={e=>setMost(e.target.value)}>
-                <option value="">—</option>
-                {players.map(p => <option key={p.id} value={p.id}>{p.profiles?.display_name || p.id}</option>)}
-              </select>
-              <label className="text-sm mt-3 block">Menys confiat</label>
-              <select className="w-full p-2 mt-1 bg-black/20 rounded" value={least} onChange={e=>setLeast(e.target.value)}>
-                <option value="">—</option>
-                {players.map(p => <option key={p.id} value={p.id}>{p.profiles?.display_name || p.id}</option>)}
-              </select>
-            </div>
+            <h1 className="text-2xl font-bold">L'assassí</h1>
+            <p className="text-sm text-gray-300">Menú principal</p>
+          </div>
+        </header>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {cards.map((c) => (
+            <button
+              key={c.path}
+              onClick={() => router.push(c.path)}
+              className="group bg-black/30 hover:bg-black/40 p-4 rounded-2xl border border-white/6 shadow-md flex items-center gap-4 transition"
+            >
+              <div className="p-3 rounded-lg bg-gradient-danger group-hover:scale-105 transition">
+                {c.icon}
+              </div>
+              <div className="text-left">
+                <div className="font-semibold text-lg">{c.title}</div>
+                <div className="text-sm text-gray-300">{c.desc}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {isAdmin && (
+          <div className="mt-6">
+            <button
+              onClick={() => router.push("/admin")}
+              className="w-full py-3 rounded-xl bg-secondary hover:opacity-95 font-semibold"
+            >
+              Panell d'Administrador
+            </button>
           </div>
         )}
       </div>

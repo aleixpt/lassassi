@@ -6,16 +6,15 @@ import { useRouter } from "next/navigation";
 
 export default function AuthPage() {
   const router = useRouter();
-  const [status, setStatus] = useState("Validant el teu accés...");
+  const [status, setStatus] = useState("Verificant sessió...");
 
   useEffect(() => {
     (async () => {
       try {
-        // Intercanvi del token del magic link per la sessió
+        // Recuperem sessió actual
         const { data, error } = await supabase.auth.getSession();
-
         if (error || !data.session) {
-          setStatus("No s'ha pogut verificar la sessió. Torna a iniciar sessió.");
+          setStatus("Error d'autenticació. Torna a provar-ho.");
           setTimeout(() => router.replace("/"), 3000);
           return;
         }
@@ -23,45 +22,39 @@ export default function AuthPage() {
         const user = data.session.user;
         const localName = localStorage.getItem("lassassi_display_name");
 
-        // Si no és l’administrador, el guardem a la taula profiles
+        // No creem perfil per l'admin
         if (user.email !== "aleixpt@gmail.com" && localName) {
-          await supabase
-            .from("profiles")
-            .upsert({
-              id: user.id,
-              display_name: localName,
-            })
-            .eq("id", user.id);
+          await supabase.from("profiles").upsert({
+            id: user.id,
+            display_name: localName,
+          });
           localStorage.removeItem("lassassi_display_name");
         }
 
-        // Comprova si el joc està actiu
+        // Comprovem l'estat del joc
         const { data: gameState } = await supabase
           .from("game_state")
           .select("phase")
           .maybeSingle();
 
-        // Redirigeix segons l’estat del joc o el tipus d’usuari
-        if (user.email === "aleixpt@gmail.com") {
-          router.replace("/waiting"); // o una pàgina especial d'administrador
-        } else if (gameState?.phase === "investigation") {
+        if (gameState?.phase === "investigation") {
           router.replace("/game");
         } else {
           router.replace("/waiting");
         }
       } catch (err) {
         console.error(err);
-        setStatus("Error d'autenticació. Torna a provar-ho.");
+        setStatus("Error processant autenticació.");
         setTimeout(() => router.replace("/"), 3000);
       }
     })();
   }, [router]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-mystery text-white">
-      <div className="card bg-black/50 backdrop-blur-md p-6 text-center border border-white/10">
-        <h2 className="text-2xl font-semibold mb-2">Accedint al joc...</h2>
-        <p className="text-gray-300 animate-pulse">{status}</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-mystery">
+      <div className="card p-6 text-center">
+        <h2 className="text-lg font-semibold mb-2">Validant el teu accés...</h2>
+        <p className="text-gray-400">{status}</p>
       </div>
     </div>
   );
