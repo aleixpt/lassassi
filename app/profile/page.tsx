@@ -1,75 +1,75 @@
-// app/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 export default function ProfileLanding() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("Comprovant sessió...");
 
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await supabase.auth.getSession();
-        const session = data?.session;
+        // 1) Intentem recuperar la sessió actual (si Supabase ja ha establert la sessió)
+        const s = await supabase.auth.getSession();
+        if (!s.data?.session) {
+          // Supabase pot utilitzar el hash o query params: intentar intercanviar codi (opcional)
+          // Si l'enllaç no ha estat processat, Supabase JS pot fer-ho automàticament en navegadors moderns.
+          setStatus("Esperant la confirmació del correu...");
+          // Deixa un curt delay per si Supabase està processant.
+          await new Promise((r) => setTimeout(r, 800));
+        }
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        const session = sessionData?.session;
         if (!session) {
-          // No hi ha sessió: torna a la pàgina principal
-          router.replace("/");
+          // Si encara no hi ha sessió, redirigeix a landing
+          setStatus("No s'ha pogut establir la sessió. Torna-ho a intentar.");
+          setTimeout(() => router.replace("/"), 2000);
           return;
         }
 
         const user = session.user;
-        // Check si ja existeix profile
-        const { data: profileData, error: profErr } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .maybeSingle();
 
-        if (profErr) throw profErr;
+        // 2) Recuperem nom guardat al localStorage
+        const localName = (localStorage.getItem("lassassi_display_name") || "").trim();
 
-        if (!profileData) {
-          // agafem el nom des del localStorage si existeix
-          const name = (localStorage.getItem("lassassi_display_name") || "").trim();
-
-          // upsert profile
+        // 3) Fem upsert al perfil per assegurar que el display_name queda guardat
+        if (localName) {
           const { error: upErr } = await supabase.from("profiles").upsert({
             id: user.id,
-            display_name: name || null,
-            avatar_url: null
+            display_name: localName
           });
-          if (upErr) throw upErr;
-        }
-
-        // Ara comprovem l'estat de la partida
-        const { data: gs } = await supabase.from("game_state").select("phase").maybeSingle();
-
-        // Si la partida ja està en fase 'investigation' (activa), enviar a /game
-        if (gs && gs.phase === "investigation") {
-          router.replace("/game");
+          if (upErr) {
+            console.error("Error upserting profile:", upErr);
+          }
         } else {
-          // si no, a la sala d'espera
-          router.replace("/waiting");
+          // si no hi ha localName i no existeix perfil, el trigger ja hauria creat un perfil amb email
+          // Opcional: podríem demanar nom al primer inici de sessió
         }
-      } catch (err) {
+
+        // 4) Redirigeix segons l'estat de la partida
+        const { data: gs } = await supabase.from("game_state").select("phase").maybeSingle();
+        if (gs && gs.phase === "investigation") router.replace("/game");
+        else router.replace("/waiting");
+      } catch (err: any) {
         console.error(err);
-        alert("Error gestionant el perfil: " + (err.message || err));
-        router.replace("/");
-      } finally {
-        setLoading(false);
+        setStatus("S'ha produït un error: " + (err.message || err));
+        setTimeout(() => router.replace("/"), 3000);
       }
     })();
   }, [router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="card">
-        <div className="p-6 text-center">
-          <div className="text-lg font-semibold">Comprovant la teva sessió...</div>
+      <div className="card p-6">
+        <div className="text-center">
+          <div className="text-lg font-semibold">Iniciant sessió...</div>
+          <div className="text-sm text-gray-400 mt-2">No tanquis aquesta finestra — et redirigirem en breu.</div>
         </div>
       </div>
     </div>
   );
 }
+

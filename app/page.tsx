@@ -1,34 +1,39 @@
-// app/page.tsx
 "use client";
 
 import { useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const router = useRouter();
 
-  async function handleEnter(e) {
+  async function handleEnter(e: React.FormEvent) {
     e.preventDefault();
-    if (!name || !email) return alert("Introdueix nom i correu");
+    if (!name || !email) {
+      setMessage("Si us plau, introdueix nom i correu.");
+      return;
+    }
     setLoading(true);
-
+    setMessage("");
     try {
-      // Guardem el nom temporalment al localStorage perquè després el puguem usar
+      // Guardem el nom temporalment al navegador
       localStorage.setItem("lassassi_display_name", name);
 
-      // Enviem magic link (OTP) al correu
+      // Enviem magic link
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: window.location.origin } // redirigeix a l'arrel on la sessió serà accessible
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback` }
       });
 
       if (error) throw error;
-
-      alert("S'ha enviat un enllaç al teu correu. Obre-lo per completar l'inici de sessió.");
-    } catch (err) {
-      alert(err.message || err);
+      setMessage("📧 Revisa el teu correu per completar l'inici de sessió.");
+    } catch (err: any) {
+      console.error(err);
+      setMessage("Error enviant el correu: " + (err.message || err));
     } finally {
       setLoading(false);
     }
@@ -40,31 +45,16 @@ export default function Home() {
         <h1 className="text-4xl font-bold text-center text-foreground mb-4">L'assassí</h1>
 
         <form onSubmit={handleEnter} className="space-y-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nom"
-            required
-            className="w-full p-3 rounded bg-black/20"
-          />
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Correu electrònic"
-            type="email"
-            required
-            className="w-full p-3 rounded bg-black/20"
-          />
-
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom" required className="w-full p-3 rounded bg-black/20" />
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Correu electrònic" type="email" required className="w-full p-3 rounded bg-black/20" />
           <button type="submit" className="btn btn-primary w-full" disabled={loading}>
             {loading ? "Enviant..." : "Entrar"}
           </button>
         </form>
 
-        <p className="mt-3 small-muted text-center text-sm">
-          Rebràs un enllaç al teu correu per entrar. Obre'l al dispositiu on vulguis jugar.
-        </p>
+        {message && <div className="mt-4 text-sm text-gray-300 bg-gray-800/60 px-4 py-2 rounded-lg text-center">{message}</div>}
       </div>
     </div>
   );
 }
+
