@@ -1,118 +1,69 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
-
-type Player = {
-  id: string;
-  display_name: string;
-  avatar_url: string | null;
-  joined_at: string;
-  role: string;
-};
+import { supabase } from "../../lib/supabaseClient";
 
 export default function Waiting() {
-  const [players, setPlayers] = useState<Player[]>([]);
+  const router = useRouter();
+  const [players, setPlayers] = useState<any[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const router = useRouter();
 
+  // 🔹 Fetch inicial dels jugadors i sessió
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
       const session = data?.session;
-
       if (!session) {
         router.replace("/");
         return;
       }
-
       const currentUser = session.user;
       setUser(currentUser);
       setIsAdmin(currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
 
-      // 🔹 Crear jugador a la taula players si no existeix
-      const { data: existingPlayer } = await supabase
-        .from("players")
-        .select("id")
-        .eq("user_id", currentUser.id)
-        .maybeSingle();
-
-      if (!existingPlayer) {
-        await supabase.from("players").insert({
-          user_id: currentUser.id,
-          role: "investigator",
-          is_alive: true,
-          is_ghost: false,
-        });
-      }
-
       await fetchPlayers();
 
-      // 🔹 Comprovar estat inicial de la partida
-      const { data: game } = await supabase.from("game_state").select("*").maybeSingle();
-      if (game?.phase === "in_progress") {
-        router.push("/game");
-        return;
-      }
-
-      // 🔹 Realtime: players
-      const playersChannel = supabase
+      // Subscriu a Realtime per actualitzar jugadors
+      const channel = supabase
         .channel("players_channel")
         .on(
           "postgres_changes",
           { event: "*", schema: "public", table: "players" },
-          () => fetchPlayers()
-        )
-        .subscribe();
-
-      // 🔹 Realtime: game_state
-      const gameChannel = supabase
-        .channel("game_state_channel")
-        .on(
-          "postgres_changes",
-          { event: "INSERT", schema: "public", table: "game_state" },
-          (payload: any) => {
-            if (payload.new.phase === "in_progress") router.push("/game");
-          }
-        )
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "game_state" },
-          (payload: any) => {
-            if (payload.new.phase === "in_progress") router.push("/game");
-          }
+          fetchPlayers
         )
         .subscribe();
 
       return () => {
-        supabase.removeChannel(playersChannel);
-        supabase.removeChannel(gameChannel);
+        supabase.removeChannel(channel);
       };
     })();
-  }, [router]);
+  }, []);
 
+  // 🔹 Obtenir jugadors únics
   async function fetchPlayers() {
     const { data, error } = await supabase
-      .from("players")
-      .select("id, role, joined_at, profiles(display_name, avatar_url)")
-      .order("joined_at", { ascending: true });
+      .from("profiles")
+      .select("id, display_name, avatar_url, created_at")
+      .order("created_at");
 
     if (!error && data) {
-      setPlayers(
-        data.map((p: any) => ({
-          id: p.id,
-          role: p.role || "investigator",
-          display_name: p.profiles?.display_name || "Jugador",
-          avatar_url: p.profiles?.avatar_url || "/default-avatar.png",
-          joined_at: p.joined_at || new Date().toISOString(),
-        }))
+      // Excloure administrador
+      const filtered = data.filter(
+        (p) =>
+          p.display_name?.toLowerCase() !==
+            process.env.NEXT_PUBLIC_ADMIN_EMAIL?.split("@")[0].toLowerCase()
       );
+
+      // Evitar duplicats per id
+      const uniquePlayers = Array.from(new Map(filtered.map((p) => [p.id, p])).values());
+      setPlayers(uniquePlayers);
     }
   }
 
+  // 🔹 Seleccionar/desseleccionar assassins
   function toggle(id: string) {
     const s = new Set(selected);
     if (s.has(id)) s.delete(id);
@@ -120,6 +71,7 @@ export default function Waiting() {
     setSelected(s);
   }
 
+  // 🔹 Iniciar partida (només admin)
   async function startGame() {
     if (!isAdmin) return;
 
@@ -138,13 +90,13 @@ export default function Waiting() {
       });
 
       const j = await res.json();
-      if (!res.ok || !j.ok) throw new Error(j.error || "Error iniciant partida");
+      if (!j.ok) throw new Error(j.error || "Error iniciant partida");
 
-      alert("Partida iniciada!");
+      // Redirigeix tots els jugadors a /game
       router.push("/game");
     } catch (err: any) {
       console.error("Error iniciant la partida:", err);
-      alert(err.message);
+      alert("Error iniciant la partida: " + err.message);
     }
   }
 
@@ -153,6 +105,7 @@ export default function Waiting() {
       <div className="max-w-4xl mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-center">Sala d'espera</h1>
 
+        {/* Llista de jugadors */}
         <div className="grid gap-4">
           {players.map((p) => (
             <div
@@ -161,14 +114,14 @@ export default function Waiting() {
             >
               <div className="flex items-center gap-3">
                 <img
-                  src={p.avatar_url}
+                  src={p.avatar_url || "/default-avatar.png"}
                   alt=""
                   className="w-12 h-12 rounded-full border border-white/20"
                 />
                 <div>
-                  <div className="font-semibold">{p.display_name}</div>
+                  <div className="font-semibold">{p.display_name || "Jugador"}</div>
                   <div className="text-xs text-gray-400">
-                    {new Date(p.joined_at).toLocaleTimeString()}
+                    {new Date(p.created_at).toLocaleTimeString()}
                   </div>
                 </div>
               </div>
@@ -189,6 +142,7 @@ export default function Waiting() {
           ))}
         </div>
 
+        {/* Botó per iniciar partida */}
         {isAdmin ? (
           <div className="text-center space-y-3">
             <button
@@ -207,4 +161,3 @@ export default function Waiting() {
     </div>
   );
 }
-
