@@ -1,54 +1,30 @@
-// /app/api/start_game/route.ts
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
   const supabase = createRouteHandlerClient({ cookies });
+  const body = await req.json();
+  const { assassins } = body;
 
-  // Comprovació admin
-  const { data: { user } = {} } = await supabase.auth.getUser();
-  if (!user || user.email !== process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  if (!assassins || !Array.isArray(assassins)) {
+    return NextResponse.json({ ok: false, error: "Assassins no proporcionats" }, { status: 400 });
   }
 
-  const body = await req.json();
-  const assassins: string[] = body.assassins || [];
+  // Només hi ha una partida a la vegada
+  const { data: game } = await supabase.from("game_state").select("*").maybeSingle();
+  if (!game) return NextResponse.json({ ok: false, error: "No hi ha partida creada" });
 
   try {
-    // Assigna rols
-    const { error: roleError } = await supabase
-      .from("players")
-      .update({
-        role: supabase.raw(
-          `CASE WHEN id = ANY($1) THEN 'assassin' ELSE 'investigator' END`,
-          [assassins]
-        ),
-      });
+    // Actualitzar rols dels jugadors
+    await supabase.from("players").update({ role: "assassin" }).in("id", assassins);
+    await supabase.from("players").update({ role: "investigator" }).not("id", "in", assassins);
 
-    if (roleError) throw roleError;
+    // Canviar fase a in_progress i ronda 1
+    await supabase.from("game_state").update({ phase: "in_progress", current_round: 1 }).eq("id", game.id);
 
-    // Actualitza fase global
-    const { error: gsError } = await supabase
-      .from("game_state")
-      .update({ phase: "in_progress", current_round: 1 })
-      .eq("id", 1);
-
-    if (gsError) throw gsError;
-
-    // Crea primera ronda
-    const { error: roundError } = await supabase.from("rounds").insert([
-      {
-        number: 1,
-        started_at: new Date().toISOString(),
-      },
-    ]);
-
-    if (roundError) throw roundError;
-
-    return NextResponse.json({ ok: true, message: "Partida iniciada correctament" });
+    return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("Error start_game:", err);
     return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
