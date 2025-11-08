@@ -1,38 +1,61 @@
+// app/api/start-game/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseServer";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+async function getUserFromToken(token: string | null) {
+  if (!token) return null;
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error) return null;
+  return data?.user ?? null;
+}
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const { data, error } = await supabaseAdmin
-      .from("game_state")
-      .select("id")
-      .maybeSingle();
+    const token = req.headers.get("authorization")?.replace("Bearer ", "");
+    const user = await getUserFromToken(token);
+    if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (user.email !== "aleixpt@gmail.com") return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
-    if (error) throw error;
+    const { roomId } = await req.json();
+    if (!roomId) return NextResponse.json({ message: "Missing roomId" }, { status: 400 });
 
-    if (data && data.id) {
-      await supabaseAdmin
-        .from("game_state")
-        .update({ phase: "investigation", current_round: 1 })
-        .eq("id", data.id);
-    } else {
-      await supabaseAdmin
-        .from("game_state")
-        .insert([{ phase: "investigation", current_round: 1 }]);
+    // update room status
+    const { error: e1 } = await supabaseAdmin.from("rooms").update({ status: "in_progress" }).eq("id", roomId);
+    if (e1) {
+      console.error("Error updating room:", e1);
+      return NextResponse.json({ message: "DB error" }, { status: 500 });
     }
 
-    await supabaseAdmin
-      .from("players")
-      .update({ is_alive: true, is_ghost: false })
-      .eq("room_id", "main");
+    // create first round (number = 1)
+    const { data: round, error: rErr } = await supabaseAdmin
+      .from("rounds")
+      .insert({ room_id: roomId, number: 1, started_at: new Date().toISOString() })
+      .select("*")
+      .single();
 
-    return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    console.error("Error iniciant partida:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    if (rErr) {
+      console.error("Error creating round:", rErr);
+      return NextResponse.json({ message: "DB error" }, { status: 500 });
+    }
+
+    // notify players
+    const { data: players } = await supabaseAdmin.from("players").select("id").eq("room_id", roomId);
+    if (players) {
+      const now = new Date().toISOString();
+      const notifications = players.map((p: any) => ({
+        player_id: p.id,
+        room_id: roomId,
+        message: "La partida ha començat. Ronda 1 iniciada.",
+        payload: { event: "game_started", roundId: round.id, roundNumber: 1 },
+        created_at: now,
+      }));
+      const { error: notifErr } = await supabaseAdmin.from("notifications").insert(notifications);
+      if (notifErr) console.error("Error inserting notifications:", notifErr);
+    }
+
+    return NextResponse.json({ ok: true, round });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }
