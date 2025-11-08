@@ -1,61 +1,54 @@
-// app/api/start-game/route.ts
+// /app/api/start_game/route.ts
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseServer";
-
-async function getUserFromToken(token: string | null) {
-  if (!token) return null;
-  const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error) return null;
-  return data?.user ?? null;
-}
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
 export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient({ cookies });
+
+  // Comprovació admin
+  const { data: { user } = {} } = await supabase.auth.getUser();
+  if (!user || user.email !== process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const assassins: string[] = body.assassins || [];
+
   try {
-    const token = req.headers.get("authorization")?.replace("Bearer ", "");
-    const user = await getUserFromToken(token);
-    if (!user) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    if (user.email !== "aleixpt@gmail.com") return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    // Assigna rols
+    const { error: roleError } = await supabase
+      .from("players")
+      .update({
+        role: supabase.raw(
+          `CASE WHEN id = ANY($1) THEN 'assassin' ELSE 'investigator' END`,
+          [assassins]
+        ),
+      });
 
-    const { roomId } = await req.json();
-    if (!roomId) return NextResponse.json({ message: "Missing roomId" }, { status: 400 });
+    if (roleError) throw roleError;
 
-    // update room status
-    const { error: e1 } = await supabaseAdmin.from("rooms").update({ status: "in_progress" }).eq("id", roomId);
-    if (e1) {
-      console.error("Error updating room:", e1);
-      return NextResponse.json({ message: "DB error" }, { status: 500 });
-    }
+    // Actualitza fase global
+    const { error: gsError } = await supabase
+      .from("game_state")
+      .update({ phase: "in_progress", current_round: 1 })
+      .eq("id", 1);
 
-    // create first round (number = 1)
-    const { data: round, error: rErr } = await supabaseAdmin
-      .from("rounds")
-      .insert({ room_id: roomId, number: 1, started_at: new Date().toISOString() })
-      .select("*")
-      .single();
+    if (gsError) throw gsError;
 
-    if (rErr) {
-      console.error("Error creating round:", rErr);
-      return NextResponse.json({ message: "DB error" }, { status: 500 });
-    }
+    // Crea primera ronda
+    const { error: roundError } = await supabase.from("rounds").insert([
+      {
+        number: 1,
+        started_at: new Date().toISOString(),
+      },
+    ]);
 
-    // notify players
-    const { data: players } = await supabaseAdmin.from("players").select("id").eq("room_id", roomId);
-    if (players) {
-      const now = new Date().toISOString();
-      const notifications = players.map((p: any) => ({
-        player_id: p.id,
-        room_id: roomId,
-        message: "La partida ha començat. Ronda 1 iniciada.",
-        payload: { event: "game_started", roundId: round.id, roundNumber: 1 },
-        created_at: now,
-      }));
-      const { error: notifErr } = await supabaseAdmin.from("notifications").insert(notifications);
-      if (notifErr) console.error("Error inserting notifications:", notifErr);
-    }
+    if (roundError) throw roundError;
 
-    return NextResponse.json({ ok: true, round });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    return NextResponse.json({ ok: true, message: "Partida iniciada correctament" });
+  } catch (err: any) {
+    console.error("Error start_game:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
 }
