@@ -17,7 +17,6 @@ export default function Waiting() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [phase, setPhase] = useState<string>("waiting");
   const router = useRouter();
 
   useEffect(() => {
@@ -70,7 +69,6 @@ export default function Waiting() {
           { event: "UPDATE", schema: "public", table: "game_state" },
           (payload: any) => {
             const newPhase = payload.new.phase;
-            setPhase(newPhase);
             if (newPhase === "in_progress") router.push("/game");
           }
         )
@@ -141,9 +139,6 @@ export default function Waiting() {
     <div className="min-h-screen p-6 bg-gradient-mystery text-white">
       <div className="max-w-4xl mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-center">Sala d'espera</h1>
-        <h2 className="text-center text-gray-300">
-          Fase: {phase.toUpperCase()}
-        </h2>
 
         <div className="grid gap-4">
           {players.map((p) => (
