@@ -1,155 +1,60 @@
-"use client";
+import { NextResponse } from "next/server";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
-import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
-import { useRouter } from "next/navigation";
+export async function POST(req: Request) {
+  const supabase = createRouteHandlerClient({ cookies });
 
-export default function Waiting() {
-  const [players, setPlayers] = useState<any[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [user, setUser] = useState<any>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const router = useRouter();
-
-  // 🔹 Comprovació d'usuari i càrrega inicial
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      const session = data?.session;
-
-      if (!session) {
-        router.replace("/");
-        return;
-      }
-
-      const currentUser = session.user;
-      setUser(currentUser);
-      setIsAdmin(currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
-
-      await fetchPlayers();
-
-      // 🔁 Refresc automàtic cada 5 segons
-      const interval = setInterval(fetchPlayers, 5000);
-      return () => clearInterval(interval);
-    })();
-  }, []);
-
-  // 🔹 Obtenir jugadors
-  async function fetchPlayers() {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id, display_name, avatar_url, created_at")
-      .order("created_at");
-
-    if (!error && data) {
-      // ❌ Excloure administrador del llistat
-      const filtered = data.filter(
-        (p) =>
-          p.display_name?.toLowerCase() !== "aleixpt" &&
-          p.display_name?.toLowerCase() !== "admin" &&
-          p.display_name?.toLowerCase() !==
-            process.env.NEXT_PUBLIC_ADMIN_EMAIL?.toLowerCase()
-      );
-      setPlayers(filtered);
-    }
+  // 🔹 Comprovació usuari admin
+  const { data: { user } = {} } = await supabase.auth.getUser();
+  if (!user || user.email !== process.env.NEXT_PUBLIC_ADMIN_EMAIL) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  // 🔹 Seleccionar/desseleccionar assassins
-  function toggle(id: string) {
-    const s = new Set(selected);
-    if (s.has(id)) s.delete(id);
-    else s.add(id);
-    setSelected(s);
-  }
+  // 🔹 Llegeix llista d'assassins enviada pel client
+  const body = await req.json();
+  const assassins: string[] = body.assassins || [];
 
-  // 🔹 Iniciar partida (només administrador)
-  async function startGame() {
-    if (!isAdmin) return;
-
-    if (selected.size < 2) {
-      const confirmContinue = confirm(
-        `Només hi ha ${selected.size} assassí(s) seleccionat(s). Vols continuar igualment?`
-      );
-      if (!confirmContinue) return;
-    }
-
-    try {
-      const res = await fetch(`${window.location.origin}/api/start_game`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assassins: Array.from(selected) }),
+  try {
+    // 🔹 Assigna rol als jugadors
+    const { error: roleError } = await supabase
+      .from("players")
+      .update({
+        role: supabase.raw(`CASE WHEN id = ANY($1) THEN 'assassin' ELSE 'investigator' END`, [assassins])
       });
 
-      const j = await res.json();
-      if (!j.ok) throw new Error(j.error || "Error iniciant partida");
-
-      // 🔁 Quan s’inicia la partida → redirigeix tothom a /game
-      router.push("/game");
-    } catch (err: any) {
-      console.error("Error iniciant la partida:", err);
+    if (roleError) {
+      console.error("Error assignant rols:", roleError);
+      return NextResponse.json({ ok: false, error: "Error assignant rols" }, { status: 500 });
     }
+
+    // 🔹 Actualitza fase global
+    const { error: gsError } = await supabase
+      .from("game_state")
+      .update({ phase: "in_progress", current_round: 1 })
+      .eq("id", 1);
+
+    if (gsError) {
+      console.error("Error actualitzant game_state:", gsError);
+      return NextResponse.json({ ok: false, error: "Error actualitzant fase" }, { status: 500 });
+    }
+
+    // 🔹 Crea primera ronda
+    const { error: roundError } = await supabase.from("rounds").insert([
+      {
+        number: 1,
+        started_at: new Date().toISOString(),
+      },
+    ]);
+
+    if (roundError) {
+      console.error("Error creant ronda:", roundError);
+      return NextResponse.json({ ok: false, error: "Error creant ronda" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, message: "Partida iniciada correctament" });
+  } catch (err: any) {
+    console.error("Error start_game:", err);
+    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
   }
-
-  return (
-    <div className="min-h-screen p-6 bg-gradient-mystery text-white">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <h1 className="text-4xl font-bold text-center">Sala d'espera</h1>
-
-        {/* Llista de jugadors */}
-        <div className="grid gap-4">
-          {players.map((p) => (
-            <div
-              key={p.id}
-              className="flex items-center justify-between bg-black/20 p-3 rounded-xl border border-white/10 shadow-md"
-            >
-              <div className="flex items-center gap-3">
-                <img
-                  src={p.avatar_url || "/default-avatar.png"}
-                  alt=""
-                  className="w-12 h-12 rounded-full border border-white/20"
-                />
-                <div>
-                  <div className="font-semibold">
-                    {p.display_name || "Jugador"}
-                  </div>
-                  <div className="text-xs text-gray-400">
-                    {new Date(p.created_at).toLocaleTimeString()}
-                  </div>
-                </div>
-              </div>
-
-              {isAdmin && (
-                <button
-                  onClick={() => toggle(p.id)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-200 ${
-                    selected.has(p.id)
-                      ? "bg-red-600 hover:bg-red-700"
-                      : "bg-gray-700 hover:bg-gray-600"
-                  }`}
-                >
-                  {selected.has(p.id) ? "Assassí ✅" : "Seleccionar"}
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Botó per iniciar partida */}
-        {isAdmin ? (
-          <div className="text-center space-y-3">
-            <button
-              onClick={startGame}
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold text-lg transition-all shadow-md"
-            >
-              Iniciar partida
-            </button>
-          </div>
-        ) : (
-          <p className="text-center text-gray-400 italic">
-            Esperant que l’administrador iniciï la partida...
-          </p>
-        )}
-      </div>
-    </div>
-  );
 }

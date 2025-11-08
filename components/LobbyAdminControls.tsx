@@ -27,7 +27,8 @@ export default function LobbyAdminControls({ roomId, players }: { roomId: string
       // get token
       const { data: { session } = {} } = await supabase.auth.getSession();
       const token = session?.access_token;
-
+      console.log("Token:", token); 
+      
       const res = await fetch("/api/assign-roles", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
