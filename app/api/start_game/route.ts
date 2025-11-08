@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { cookies as nextCookies } from "next/headers";
 
 export async function POST(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = createRouteHandlerClient({ cookies: nextCookies }); 
+  // PASA EL REPOSITORI DE SUPABASE QUE AUTOMÀTICAMENT USARÀ GET/SET
+  // El client és capaç de resoldre-ho internament
   const body = await req.json();
   const { assassins } = body;
 
@@ -12,11 +14,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    // 🔹 Només hi ha una partida a la vegada
     let { data: game } = await supabase.from("game_state").select("*").maybeSingle();
 
     if (!game) {
-      // Crear registre si no existeix
       const { data: newGame } = await supabase
         .from("game_state")
         .insert({ phase: "in_progress", current_round: 1 })
@@ -24,16 +24,16 @@ export async function POST(req: Request) {
         .maybeSingle();
       game = newGame;
     } else {
-      // Reiniciar partida existent
       await supabase
         .from("game_state")
         .update({ phase: "in_progress", current_round: 1 })
         .eq("id", game.id);
     }
 
-    // Actualitzar rols dels jugadors
-    await supabase.from("players").update({ role: "assassin" }).in("id", assassins);
-    await supabase.from("players").update({ role: "investigator" }).not("id", "in", assassins);
+    if (assassins.length > 0) {
+      await supabase.from("players").update({ role: "assassin" }).in("id", assassins);
+      await supabase.from("players").update({ role: "investigator" }).not("id", "in", assassins);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {

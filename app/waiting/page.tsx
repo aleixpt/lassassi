@@ -51,6 +51,13 @@ export default function Waiting() {
 
       await fetchPlayers();
 
+      // 🔹 Comprovar estat inicial de la partida
+      const { data: game } = await supabase.from("game_state").select("*").maybeSingle();
+      if (game?.phase === "in_progress") {
+        router.push("/game");
+        return;
+      }
+
       // 🔹 Realtime: players
       const playersChannel = supabase
         .channel("players_channel")
@@ -66,10 +73,16 @@ export default function Waiting() {
         .channel("game_state_channel")
         .on(
           "postgres_changes",
+          { event: "INSERT", schema: "public", table: "game_state" },
+          (payload: any) => {
+            if (payload.new.phase === "in_progress") router.push("/game");
+          }
+        )
+        .on(
+          "postgres_changes",
           { event: "UPDATE", schema: "public", table: "game_state" },
           (payload: any) => {
-            const newPhase = payload.new.phase;
-            if (newPhase === "in_progress") router.push("/game");
+            if (payload.new.phase === "in_progress") router.push("/game");
           }
         )
         .subscribe();
@@ -194,3 +207,4 @@ export default function Waiting() {
     </div>
   );
 }
+
