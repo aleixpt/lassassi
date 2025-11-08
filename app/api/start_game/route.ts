@@ -11,6 +11,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { assassins } = body;
 
+    // 🔹 Només array d'assassins
     if (!assassins || !Array.isArray(assassins)) {
       return NextResponse.json(
         { ok: false, error: "Assassins no proporcionats" },
@@ -19,7 +20,11 @@ export async function POST(req: Request) {
     }
 
     // 🔹 Només hi ha una partida a la vegada
-    let { data: game } = await supabase.from("game_state").select("*").maybeSingle();
+    let { data: game, error: fetchError } = await supabase
+      .from("game_state")
+      .select("*")
+      .maybeSingle();
+    if (fetchError) throw fetchError;
 
     if (!game) {
       // Crear registre si no existeix
@@ -48,11 +53,24 @@ export async function POST(req: Request) {
         .in("id", assassins);
       if (assassinError) throw assassinError;
 
-      // Investigadors
+      // Investigadors (tots els altres)
+      const { data: allPlayers } = await supabase.from("players").select("id");
+      const investigatorIds = allPlayers
+        ?.map((p) => p.id)
+        .filter((id) => !assassins.includes(id)) || [];
+
+      if (investigatorIds.length > 0) {
+        const { error: investigatorError } = await supabase
+          .from("players")
+          .update({ role: "investigator" })
+          .in("id", investigatorIds);
+        if (investigatorError) throw investigatorError;
+      }
+    } else {
+      // Cap assassí seleccionat → tots investigadors
       const { error: investigatorError } = await supabase
         .from("players")
-        .update({ role: "investigator" })
-        .not("id", "in", assassins);
+        .update({ role: "investigator" });
       if (investigatorError) throw investigatorError;
     }
 

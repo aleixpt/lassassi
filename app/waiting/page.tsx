@@ -1,65 +1,74 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 export default function Waiting() {
-  const router = useRouter();
   const [players, setPlayers] = useState<any[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const router = useRouter();
 
-  // 🔹 Fetch inicial dels jugadors i sessió
+  // 🔹 Comprovació d'usuari i càrrega inicial
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
       const session = data?.session;
+
       if (!session) {
-        router.replace("/");
+        router.replace("/auth");
         return;
       }
-      const currentUser = session.user;
-      setUser(currentUser);
-      setIsAdmin(currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
+
+      setUser(session.user);
+      setIsAdmin(session.user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
 
       await fetchPlayers();
+      await checkGameState();
 
-      // Subscriu a Realtime per actualitzar jugadors
-      const channel = supabase
-        .channel("players_channel")
+      // 🔁 Refresc de jugadors cada 5s
+      const interval = setInterval(fetchPlayers, 5000);
+
+      // 🔁 Subscriure’s a canvis de game_state
+      const gameSub = supabase
+        .channel("game_state_channel")
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "players" },
-          fetchPlayers
+          { event: "*", schema: "public", table: "game_state" },
+          (payload) => {
+            if (payload.new?.phase === "in_progress") {
+              router.push("/game");
+            }
+          }
         )
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        clearInterval(interval);
+        supabase.removeChannel(gameSub);
       };
     })();
   }, []);
 
-  // 🔹 Obtenir jugadors únics
+  // 🔹 Obtenir jugadors
   async function fetchPlayers() {
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id, display_name, avatar_url, created_at")
-      .order("created_at");
+      .from("players")
+      .select("id, user_id, role, is_alive, is_ghost, profiles(display_name, avatar_url)")
+      .order("joined_at");
 
     if (!error && data) {
-      // Excloure administrador
-      const filtered = data.filter(
-        (p) =>
-          p.display_name?.toLowerCase() !==
-            process.env.NEXT_PUBLIC_ADMIN_EMAIL?.split("@")[0].toLowerCase()
-      );
+      setPlayers(data);
+    }
+  }
 
-      // Evitar duplicats per id
-      const uniquePlayers = Array.from(new Map(filtered.map((p) => [p.id, p])).values());
-      setPlayers(uniquePlayers);
+  // 🔹 Comprovar si ja hi ha partida en curs
+  async function checkGameState() {
+    const { data: game } = await supabase.from("game_state").select("*").maybeSingle();
+    if (game?.phase === "in_progress") {
+      router.push("/game");
     }
   }
 
@@ -71,7 +80,7 @@ export default function Waiting() {
     setSelected(s);
   }
 
-  // 🔹 Iniciar partida (només admin)
+  // 🔹 Iniciar partida (només administrador)
   async function startGame() {
     if (!isAdmin) return;
 
@@ -92,7 +101,6 @@ export default function Waiting() {
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || "Error iniciant partida");
 
-      // Redirigeix tots els jugadors a /game
       router.push("/game");
     } catch (err: any) {
       console.error("Error iniciant la partida:", err);
@@ -105,7 +113,6 @@ export default function Waiting() {
       <div className="max-w-4xl mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-center">Sala d'espera</h1>
 
-        {/* Llista de jugadors */}
         <div className="grid gap-4">
           {players.map((p) => (
             <div
@@ -114,15 +121,13 @@ export default function Waiting() {
             >
               <div className="flex items-center gap-3">
                 <img
-                  src={p.avatar_url || "/default-avatar.png"}
+                  src={p.profiles?.avatar_url || "/default-avatar.png"}
                   alt=""
                   className="w-12 h-12 rounded-full border border-white/20"
                 />
                 <div>
-                  <div className="font-semibold">{p.display_name || "Jugador"}</div>
-                  <div className="text-xs text-gray-400">
-                    {new Date(p.created_at).toLocaleTimeString()}
-                  </div>
+                  <div className="font-semibold">{p.profiles?.display_name || "Jugador"}</div>
+                  <div className="text-xs text-gray-400">{p.role || "investigator"}</div>
                 </div>
               </div>
 
@@ -142,8 +147,7 @@ export default function Waiting() {
           ))}
         </div>
 
-        {/* Botó per iniciar partida */}
-        {isAdmin ? (
+        {isAdmin && (
           <div className="text-center space-y-3">
             <button
               onClick={startGame}
@@ -152,7 +156,9 @@ export default function Waiting() {
               Iniciar partida
             </button>
           </div>
-        ) : (
+        )}
+
+        {!isAdmin && (
           <p className="text-center text-gray-400 italic">
             Esperant que l’administrador iniciï la partida...
           </p>
