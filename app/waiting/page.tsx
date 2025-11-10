@@ -10,9 +10,13 @@ export default function WaitingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [blocked, setBlocked] = useState(false);
 
-  // 🔹 Comprovació d'usuari i càrrega inicial
   useEffect(() => {
+    let isMounted = true;
+    let interval: NodeJS.Timeout;
+
     (async () => {
       const { data } = await supabase.auth.getSession();
       const session = data?.session;
@@ -25,16 +29,51 @@ export default function WaitingPage() {
       setUser(currentUser);
       setIsAdmin(currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
 
+      // Comprova si la partida ja ha començat
+      const { data: gameData } = await supabase
+        .from("game_state")
+        .select("phase")
+        .maybeSingle();
+
+      if (gameData?.phase === "in_progress") {
+        setGameStarted(true);
+
+        // 🔹 Si el jugador encara no existeix a players, no pot entrar
+        const { data: player } = await supabase
+          .from("players")
+          .select("id")
+          .eq("user_id", currentUser.id)
+          .maybeSingle();
+
+        if (!player) {
+          setBlocked(true);
+          return;
+        }
+
+        router.push("/game");
+        return;
+      }
+
       await ensurePlayerExists(currentUser.id);
       await fetchPlayers();
 
       // 🔁 Refresc automàtic cada 5 segons
-      const interval = setInterval(fetchPlayers, 5000);
-      return () => clearInterval(interval);
+      interval = setInterval(async () => {
+        if (!isMounted) return;
+        await fetchPlayers();
+        await checkGameState(); 
+      }, 5000);
+
+      // Comprovació inicial
+      await checkGameState();
     })();
+
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
   }, [router]);
 
-  // 🔹 Assegura que el jugador existeixi a la taula players
   async function ensurePlayerExists(userId: string) {
     try {
       const { error } = await supabase
@@ -42,7 +81,7 @@ export default function WaitingPage() {
         .upsert(
           {
             user_id: userId,
-            role: "investigator",
+            role: "Amics", // 🔹 Rol per defecte
             is_alive: true,
             is_ghost: false,
           },
@@ -54,7 +93,6 @@ export default function WaitingPage() {
     }
   }
 
-  // 🔹 Obtenir jugadors amb perfil
   async function fetchPlayers() {
     const { data, error } = await supabase
       .from("players")
@@ -67,13 +105,27 @@ export default function WaitingPage() {
     }
 
     if (data) {
-      // 🔹 Filtrar duplicats per user_id
-      const uniquePlayers = Array.from(new Map(data.map(p => [p.user_id, p])).values());
+      const uniquePlayers = Array.from(new Map(data.map((p) => [p.user_id, p])).values());
       setPlayers(uniquePlayers);
     }
   }
 
-  // 🔹 Seleccionar/desseleccionar assassins (només admin)
+  async function checkGameState() {
+    const { data, error } = await supabase
+      .from("game_state")
+      .select("phase")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Error comprovant estat del joc:", error);
+      return;
+    }
+
+    if (data?.phase === "in_progress" && window.location.pathname === "/waiting") {
+      router.push("/game");
+    }
+  }
+
   function toggle(id: string) {
     const s = new Set(selected);
     if (s.has(id)) s.delete(id);
@@ -81,7 +133,6 @@ export default function WaitingPage() {
     setSelected(s);
   }
 
-  // 🔹 Iniciar partida (només admin)
   async function startGame() {
     if (!isAdmin) return;
 
@@ -95,7 +146,6 @@ export default function WaitingPage() {
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || "Error iniciant partida");
 
-      // 🔁 Quan s’inicia la partida → redirigeix tothom a /game
       router.push("/game");
     } catch (err: any) {
       console.error("Error iniciant la partida:", err);
@@ -103,12 +153,25 @@ export default function WaitingPage() {
     }
   }
 
+  // 🔹 Missatge estètic per jugador bloquejat
+  if (blocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-mystery text-white p-6">
+        <div className="bg-black/40 p-6 rounded-2xl text-center shadow-md border border-white/10">
+          <h2 className="text-2xl font-bold mb-4">Partida ja iniciada</h2>
+          <p className="text-gray-300">
+            La partida ja ha començat i no pots unir-te. Espera la següent ronda!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-6 bg-gradient-mystery text-white">
       <div className="max-w-4xl mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-center">Sala d'espera</h1>
 
-        {/* Llista de jugadors */}
         <div className="grid gap-4">
           {players.map((p) => (
             <div
@@ -123,7 +186,7 @@ export default function WaitingPage() {
                 />
                 <div>
                   <div className="font-semibold">{p.profiles?.display_name || "Jugador"}</div>
-                  <div className="text-xs text-gray-400">{p.role?.toUpperCase()}</div>
+                  {/* 🔹 S'ha eliminat la línia de rol/INVESTIGADOR */}
                 </div>
               </div>
 
@@ -143,7 +206,6 @@ export default function WaitingPage() {
           ))}
         </div>
 
-        {/* Botó per iniciar partida */}
         {isAdmin ? (
           <div className="text-center space-y-3">
             <button
