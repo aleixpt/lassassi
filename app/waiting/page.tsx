@@ -10,7 +10,6 @@ export default function WaitingPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [user, setUser] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [gameStarted, setGameStarted] = useState(false);
   const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
@@ -27,8 +26,8 @@ export default function WaitingPage() {
 
       const currentUser = session.user;
       setUser(currentUser);
-      const admin = currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
-      setIsAdmin(admin);
+      const adminCheck = currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+      setIsAdmin(adminCheck);
 
       // Comprova si la partida ja ha començat
       const { data: gameData } = await supabase
@@ -37,36 +36,33 @@ export default function WaitingPage() {
         .maybeSingle();
 
       if (gameData?.phase === "in_progress") {
-        setGameStarted(true);
+        // 🔹 Si jugador no existeix i partida iniciada → bloquejat
+        if (!adminCheck) {
+          const { data: player } = await supabase
+            .from("players")
+            .select("id")
+            .eq("user_id", currentUser.id)
+            .maybeSingle();
 
-        // 🔹 Si el jugador encara no existeix a players, no pot entrar
-        const { data: player } = await supabase
-          .from("players")
-          .select("id")
-          .eq("user_id", currentUser.id)
-          .maybeSingle();
-
-        if (!player) {
-          setBlocked(true);
-          return;
+          if (!player) {
+            setBlocked(true);
+            return;
+          }
         }
 
         router.push("/game");
         return;
       }
 
-      // 🔹 Només assegura el jugador si NO és l'administrador
-      if (!admin) {
-        await ensurePlayerExists(currentUser.id);
-      }
-
+      // 🔹 Crear jugador només si no és l'administrador
+      if (!adminCheck) await ensurePlayerExists(currentUser.id);
       await fetchPlayers();
 
       // 🔁 Refresc automàtic cada 5 segons
       interval = setInterval(async () => {
         if (!isMounted) return;
         await fetchPlayers();
-        await checkGameState(); 
+        await checkGameState();
       }, 5000);
 
       // Comprovació inicial
@@ -86,7 +82,7 @@ export default function WaitingPage() {
         .upsert(
           {
             user_id: userId,
-            role: "Amics", // 🔹 Rol per defecte
+            role: "Amics",
             is_alive: true,
             is_ghost: false,
           },
@@ -158,7 +154,6 @@ export default function WaitingPage() {
     }
   }
 
-  // 🔹 Missatge estètic per jugador bloquejat
   if (blocked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-mystery text-white p-6">
@@ -191,7 +186,7 @@ export default function WaitingPage() {
                 />
                 <div>
                   <div className="font-semibold">{p.profiles?.display_name || "Jugador"}</div>
-                  {/* 🔹 S'ha eliminat la línia de rol/INVESTIGADOR */}
+                  {/* Només mostra nom, sense rol */}
                 </div>
               </div>
 

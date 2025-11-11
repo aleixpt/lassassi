@@ -67,11 +67,17 @@ export async function POST(req: Request) {
         if (investigatorError) throw investigatorError;
       }
     } else {
-      // Cap assassí seleccionat → tots investigadors
-      const { error: investigatorError } = await supabase
-        .from("players")
-        .update({ role: "investigator" });
-      if (investigatorError) throw investigatorError;
+      // Cap assassí seleccionat → tots investigadors existents
+      const { data: allPlayers } = await supabase.from("players").select("id");
+      const playerIds = allPlayers?.map((p) => p.id) || [];
+
+      if (playerIds.length > 0) {
+        const { error: investigatorError } = await supabase
+          .from("players")
+          .update({ role: "investigator" })
+          .in("id", playerIds);
+        if (investigatorError) throw investigatorError;
+      }
     }
 
     return NextResponse.json({ ok: true });
