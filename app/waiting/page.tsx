@@ -27,7 +27,8 @@ export default function WaitingPage() {
 
       const currentUser = session.user;
       setUser(currentUser);
-      setIsAdmin(currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL);
+      const admin = currentUser.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+      setIsAdmin(admin);
 
       // Comprova si la partida ja ha començat
       const { data: gameData } = await supabase
@@ -54,7 +55,11 @@ export default function WaitingPage() {
         return;
       }
 
-      await ensurePlayerExists(currentUser.id);
+      // 🔹 Només assegura el jugador si NO és l'administrador
+      if (!admin) {
+        await ensurePlayerExists(currentUser.id);
+      }
+
       await fetchPlayers();
 
       // 🔁 Refresc automàtic cada 5 segons
