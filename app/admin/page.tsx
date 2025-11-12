@@ -18,7 +18,7 @@ const AdminPage = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card
             className="cursor-pointer hover:shadow-glow-clue transition-all border-border"
-            onClick={() => navigate("/admin/players")}
+            onClick={() => router.push("/admin/players")}
           >
             <CardHeader>
               <div className="flex items-center gap-4">
@@ -33,7 +33,7 @@ const AdminPage = () => {
 
           <Card
             className="cursor-pointer hover:shadow-glow-clue transition-all border-border"
-            onClick={() => navigate("/admin/clues")}
+            onClick={() => router.push("/admin/clues")}
           >
             <CardHeader>
               <div className="flex items-center gap-4">
@@ -48,7 +48,7 @@ const AdminPage = () => {
 
           <Card
             className="cursor-pointer hover:shadow-glow-danger transition-all border-border md:col-span-2"
-            onClick={() => navigate("/admin/settings")}
+            onClick={() => router.push("/admin/settings")}
           >
             <CardHeader>
               <div className="flex items-center gap-4">
@@ -63,8 +63,8 @@ const AdminPage = () => {
         </div>
 
         <div className="text-center">
-          <Button variant="secondary" onClick={() => navigate("/perfil")}>
-            Volver al Perfil
+          <Button variant="secondary" onClick={() => router.push("/profile")}>
+            Tornar al Perfil
           </Button>
         </div>
       </div>

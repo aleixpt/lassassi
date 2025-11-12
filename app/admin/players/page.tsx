@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../../../components/ui/avat
 import { Badge } from "../../../components/ui/badge";
 import { useToast } from "../../../hooks/use-toast";
 import { Loader2, ArrowLeft, Users, Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Player {
   id: string;
@@ -15,12 +16,13 @@ interface Player {
   avatar_url?: string;
   status: "alive" | "ghost";
   clues_count: number;
+  role?: string;
 }
 
 const AdminPlayersPage = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const router = useRouter();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -34,18 +36,29 @@ const AdminPlayersPage = () => {
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadPlayers = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, name, avatar_url, status, clues_count")
-        .order("status", { ascending: false })
-        .order("name", { ascending: true });
+        .select("id, display_name, avatar_url, created_at, players!left(is_alive, is_ghost, role), clues_count")
+        .order("display_name", { ascending: true });
 
       if (error) throw error;
-      setPlayers(data || []);
+
+      const normalized = (data || []).map((p: any) => ({
+        id: p.id,
+        name: p.display_name || p.id,
+        avatar_url: p.avatar_url,
+        status: p.players?.[0] ? (p.players[0].is_alive ? "alive" : "ghost") : "alive",
+        role: p.players?.[0]?.role || "amic",
+        clues_count: p.clues_count || 0,
+      }));
+
+      setPlayers(normalized);
     } catch (error: any) {
       toast({
         title: "Error cargando jugadores",
@@ -91,7 +104,7 @@ const AdminPlayersPage = () => {
     <div className="min-h-screen bg-gradient-mystery p-4">
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate("/admin")}>
+          <Button variant="ghost" onClick={() => router.push("/admin")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
@@ -120,7 +133,7 @@ const AdminPlayersPage = () => {
                         {player.status === "alive" ? "Vivo" : "👻 Fantasma"}
                       </Badge>
                       <span className="text-sm text-clue">
-                        {player.clues_count} pistas
+                        {player.clues_count} pistes
                       </span>
                     </div>
                   </div>
@@ -135,7 +148,7 @@ const AdminPlayersPage = () => {
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={() => navigate(`/admin/players/${player.id}`)}
+                  onClick={() => router.push(`/admin/players/${player.id}`)}
                 >
                   <Eye className="mr-2 h-4 w-4" />
                   Ver Pistas

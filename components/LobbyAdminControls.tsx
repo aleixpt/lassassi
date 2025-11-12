@@ -29,7 +29,7 @@ export default function LobbyAdminControls({ roomId, players }: { roomId: string
       const token = session?.access_token;
       console.log("Token:", token); 
       
-      const res = await fetch("/api/assign-roles", {
+      const res = await fetch("/api/assign_roles", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ roomId, assassinIds }),
@@ -51,7 +51,7 @@ export default function LobbyAdminControls({ roomId, players }: { roomId: string
     try {
       const { data: { session } = {} } = await supabase.auth.getSession();
       const token = session?.access_token;
-      const res = await fetch("/api/start-game", {
+      const res = await fetch("/api/start_game", {
         method: "POST",
         headers: { "content-type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ roomId }),
