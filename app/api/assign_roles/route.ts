@@ -26,14 +26,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ message: "Bad request" }, { status: 400 });
     }
 
-    // 1) Set all players in room to investigator
+    // 1) Set all players in room to amic
     const { error: e1 } = await supabaseAdmin
       .from("players")
-      .update({ role: "investigator" })
+      .update({ role: "amic" })
       .eq("room_id", roomId);
 
     if (e1) {
-      console.error("Error setting investigators:", e1);
+      console.error("Error setting amics:", e1);
       return NextResponse.json({ message: "DB error" }, { status: 500 });
     }
 
@@ -66,8 +66,8 @@ export async function POST(req: Request) {
           room_id: roomId,
           message: isAssassin
             ? "Has estat assignat/da com a ASSASSÍ per l'administrador."
-            : "Ets INVESTIGADOR per aquesta partida.",
-          payload: { role: isAssassin ? "assassin" : "investigator" },
+            : "Ets AMIC per aquesta partida.",
+          payload: { role: isAssassin ? "assassin" : "amic" },
           created_at: now,
         };
       });

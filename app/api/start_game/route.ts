@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       if (investigatorIds.length > 0) {
         const { error: investigatorError } = await supabase
           .from("players")
-          .update({ role: "investigator" })
+          .update({ role: "amic" })
           .in("id", investigatorIds);
         if (investigatorError) throw investigatorError;
       }
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
       if (playerIds.length > 0) {
         const { error: investigatorError } = await supabase
           .from("players")
-          .update({ role: "investigator" })
+          .update({ role: "amic" })
           .in("id", playerIds);
         if (investigatorError) throw investigatorError;
       }

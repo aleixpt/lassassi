@@ -70,7 +70,7 @@ export default function PlayersPage() {
         name: p.display_name || p.id,
         avatar_url: p.avatar_url,
         status: p.players?.[0] ? (p.players[0].is_alive ? "alive" : "ghost") : "alive",
-        role: p.players?.[0]?.role || "investigator",
+        role: p.players?.[0]?.role || "amic",
         clues_count: p.clues_count || 0,
       }));
 

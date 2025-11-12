@@ -37,7 +37,7 @@ export default function AuthPage() {
           .select("phase")
           .maybeSingle();
 
-        if (gameState?.phase === "investigation") {
+        if (gameState?.phase === "in_progress") {
           router.replace("/game");
         } else {
           router.replace("/waiting");

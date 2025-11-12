@@ -40,10 +40,10 @@ export default function ProfilePage() {
 
       setProfile(finalProfile);
 
-      // Determine role: players.role > user_roles > default investigator (except admin)
+      // Determine role: players.role > user_roles > default amics (except admin)
       if (playerRow?.role) setRole(playerRow.role);
       else if (user.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL) setRole("admin");
-      else setRole("investigator");
+      else setRole("amic");
 
       setLoading(false);
     })();
@@ -52,7 +52,7 @@ export default function ProfilePage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-white">Carregant...</div>;
   if (!profile) return null;
 
-  const roleLabel = role === "assassin" ? "Assassí" : role === "admin" ? "Administrador" : "Investigador";
+  const roleLabel = role === "assassin" ? "Assassí" : role === "admin" ? "Administrador" : "Amic";
   const roleColor = role === "assassin" ? "bg-red-600" : role === "admin" ? "bg-yellow-600" : "bg-green-600";
 
   return (
